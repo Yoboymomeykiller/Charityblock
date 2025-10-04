@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-declare_id!("11111111111111111111111111111111");
+declare_id!("7zkgjDgZReMvhMuJtMU6Rx9ijsqKVpCH1sf6GcCp2dnW");
 #[program]
 pub mod charityblock {
     use super::*;

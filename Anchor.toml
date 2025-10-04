@@ -1,9 +1,18 @@
-[workspace]
-members = ["programs/charityblock"]
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+charityblock = "7zkgjDgZReMvhMuJtMU6Rx9ijsqKVpCH1sf6GcCp2dnW"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/charityblock.json"
 
-[programs.devnet]
-charityblock = "11111111111111111111111111111111"
+[workspace]
+members = ["programs/charityblock"]
