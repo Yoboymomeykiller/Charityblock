@@ -1,0 +1,9 @@
+[workspace]
+members = ["programs/charityblock"]
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/charityblock.json"
+
+[programs.devnet]
+charityblock = "11111111111111111111111111111111"

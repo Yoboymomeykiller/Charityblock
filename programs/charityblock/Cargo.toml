@@ -1,0 +1,11 @@
+[package]
+name = "charityblock"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "charityblock"
+
+[dependencies]
+anchor-lang = "0.30.0"
