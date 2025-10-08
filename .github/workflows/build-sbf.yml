@@ -1,0 +1,37 @@
+name: Build SBF
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Solana 1.18.20
+        run: |
+          curl -sSfL https://release.solana.com/v1.18.20/install | sh -s - -y
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          solana --version
+      - name: Install Anchor 0.31.1
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
+          echo "$HOME/.avm/bin" >> $GITHUB_PATH
+          avm install 0.31.1
+          avm use 0.31.1
+          anchor --version
+      - name: Build Program
+        env:
+          ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
+        run: |
+          anchor clean
+          anchor build
+          ls -la target/deploy
+          ls -la target/idl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: charityblock-artifacts
+          path: |
+            target/deploy/charityblock.so
+            target/deploy/charityblock-keypair.json
+            target/idl/charityblock.json
