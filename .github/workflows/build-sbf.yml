@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Correct inputs: version, base_url (NOT solana-version)
+      # 1) Solana CLI (keeps our earlier fix)
       - name: Install Solana 1.18.20
         uses: metaplex-foundation/actions/install-solana@v1
         with:
@@ -19,7 +19,6 @@ jobs:
           cache: true
 
       - name: Ensure Solana in PATH and show toolchain
-        shell: bash
         run: |
           set -eux
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
@@ -27,20 +26,27 @@ jobs:
           which cargo-build-sbf || true
           cargo-build-sbf --version || true
 
-      - name: Install Anchor via AVM (0.31.1)
-        shell: bash
+      # 2) Rust toolchain for building Anchor from source
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # 3) System deps (present on runners, but ensure)
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      # 4) Anchor CLI via Cargo (no AVM script, no 404s)
+      - name: Install Anchor CLI 0.31.1
         run: |
           set -eux
-          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
-          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
-          avm install 0.31.1
-          avm use 0.31.1
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
           anchor --version
 
+      # 5) Build the program
       - name: Build Program
         env:
           ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
-        shell: bash
         run: |
           set -eux
           anchor clean
@@ -48,6 +54,7 @@ jobs:
           ls -la target/deploy
           ls -la target/idl
 
+      # 6) Publish build artifacts
       - uses: actions/upload-artifact@v4
         with:
           name: charityblock-artifacts
