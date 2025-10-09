@@ -5,22 +5,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Use the official Solana toolchain image (has solana + cargo-build-sbf preinstalled)
+    container:
+      image: ghcr.io/anza-xyz/solana:1.18.20
+
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Solana 1.18.20 (robust)
+      - name: Show toolchain
         shell: bash
         run: |
           set -eux
-          curl --retry 5 --retry-delay 2 -sSfL https://release.solana.com/v1.18.20/install -o /tmp/solana-install.sh
-          bash /tmp/solana-install.sh -y
-          "$HOME/.local/share/solana/install/solana-install" init v1.18.20
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           solana --version
           which cargo-build-sbf || true
+          cargo-build-sbf --version || true
+          rustc -V || true
+          cargo -V || true
 
       - name: Install Anchor 0.31.1 via AVM
         shell: bash
@@ -35,6 +36,7 @@ jobs:
       - name: Build Program
         env:
           ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
+        shell: bash
         run: |
           set -eux
           anchor clean
