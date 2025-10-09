@@ -1,33 +1,47 @@
 name: Build SBF
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Solana 1.18.20
+
+      - name: Install Solana 1.18.20 (robust)
+        shell: bash
         run: |
-          curl -sSfL https://release.solana.com/v1.18.20/install | sh -s - -y
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          set -eux
+          curl --retry 5 --retry-delay 2 -sSfL https://release.solana.com/v1.18.20/install -o /tmp/solana-install.sh
+          bash /tmp/solana-install.sh -y
+          "$HOME/.local/share/solana/install/solana-install" init v1.18.20
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           solana --version
-      - name: Install Anchor 0.31.1
+          which cargo-build-sbf || true
+
+      - name: Install Anchor 0.31.1 via AVM
+        shell: bash
         run: |
+          set -eux
           curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
-          echo "$HOME/.avm/bin" >> $GITHUB_PATH
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
           avm install 0.31.1
           avm use 0.31.1
           anchor --version
+
       - name: Build Program
         env:
           ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
         run: |
+          set -eux
           anchor clean
           anchor build
           ls -la target/deploy
           ls -la target/idl
+
       - uses: actions/upload-artifact@v4
         with:
           name: charityblock-artifacts
