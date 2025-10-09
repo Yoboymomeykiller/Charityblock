@@ -10,21 +10,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Install Solana CLI without hitting release.solana.com
+      # Correct inputs: version, base_url (NOT solana-version)
       - name: Install Solana 1.18.20
         uses: metaplex-foundation/actions/install-solana@v1
         with:
-          solana-version: "1.18.20"
+          version: "1.18.20"
+          base_url: "https://release.anza.xyz"
+          cache: true
 
-      - name: Show Solana toolchain
+      - name: Ensure Solana in PATH and show toolchain
+        shell: bash
         run: |
           set -eux
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           solana --version
           which cargo-build-sbf || true
           cargo-build-sbf --version || true
 
-      # Install Anchor 0.31.1
-      - name: Install Anchor via AVM
+      - name: Install Anchor via AVM (0.31.1)
+        shell: bash
         run: |
           set -eux
           curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
@@ -36,6 +40,7 @@ jobs:
       - name: Build Program
         env:
           ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
+        shell: bash
         run: |
           set -eux
           anchor clean
