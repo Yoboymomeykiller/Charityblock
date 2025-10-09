@@ -8,4 +8,4 @@ crate-type = ["cdylib", "lib"]
 name = "charityblock"
 
 [dependencies]
-anchor-lang = "0.30.0"
+anchor-lang = "0.31.1"
