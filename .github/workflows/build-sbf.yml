@@ -5,60 +5,81 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # 1) Solana CLI (keeps our earlier fix)
-      - name: Install Solana 1.18.20
-        uses: metaplex-foundation/actions/install-solana@v1
+      # Install a modern Rust that supports lockfile v4
+      - name: Rust toolchain 1.86.0
+        uses: dtolnay/rust-toolchain@master
         with:
-          version: "1.18.20"
-          base_url: "https://release.anza.xyz"
-          cache: true
+          toolchain: "1.86.0"
+          components: rustfmt, clippy
 
-      - name: Ensure Solana in PATH and show toolchain
+      # Make 1.86 the active toolchain everywhere (anchor/cargo use it too)
+      - name: Use Rust 1.86 globally
+        shell: bash
         run: |
           set -eux
+          rustup default 1.86.0
+          rustup override set 1.86.0
+          rustc -V
+          cargo -V
+
+      # Install Solana CLI 1.18.20
+      - name: Install Solana 1.18.20
+        shell: bash
+        run: |
+          set -eux
+          curl -fsSL https://release.solana.com/v1.18.20/install -o /tmp/solana-install.sh
+          bash /tmp/solana-install.sh -y
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
           solana --version
-          which cargo-build-sbf || true
-          cargo-build-sbf --version || true
 
-      # 2) Rust toolchain for building Anchor from source
-      - name: Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      # 3) System deps (present on runners, but ensure)
-      - name: Install build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev
-
-      # 4) Anchor CLI via Cargo (no AVM script, no 404s)
+      # Install Anchor CLI 0.31.1 via AVM (correct raw URL)
       - name: Install Anchor CLI 0.31.1
+        shell: bash
         run: |
           set -eux
-          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 anchor-cli --locked
+          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+          avm install 0.31.1
+          avm use 0.31.1
           anchor --version
 
-      # 5) Build the program
+      # Safety: nuke any incompatible lockfiles
+      - name: Remove Cargo.lock files
+        shell: bash
+        run: |
+          set -eux
+          find . -name Cargo.lock -delete
+
+      # Optional: print toolchain summary
+      - name: Show toolchain
+        shell: bash
+        run: |
+          rustc -V
+          cargo -V
+          anchor --version
+          solana --version
+
+      # Build the program using the pinned toolchain
       - name: Build Program
         env:
-          ANCHOR_WALLET: ${{ github.workspace }}/target/deploy/charityblock-keypair.json
+          RUSTUP_TOOLCHAIN: 1.86.0
+        shell: bash
         run: |
           set -eux
           anchor clean
           anchor build
-          ls -la target/deploy
-          ls -la target/idl
 
-      # 6) Publish build artifacts
-      - uses: actions/upload-artifact@v4
+      # Upload built artifacts
+      - name: Upload IDL and artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: charityblock-artifacts
           path: |
-            target/deploy/charityblock.so
-            target/deploy/charityblock-keypair.json
-            target/idl/charityblock.json
+            target/idl/**
+            target/deploy/**
+            target/types/**
