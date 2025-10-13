@@ -10,14 +10,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust (Cargo understands lockfile v4)
+      # Modern Rust (understands lockfile v4)
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # --- Solana 1.18.20 (working mirror logic) ---
+      # ---- Solana 1.18.20 with mirror fallback ----
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -28,7 +28,7 @@ jobs:
 
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
-              echo "Downloaded solana from $URL"
+              echo "Downloaded from $URL"
               break
             fi
           done
@@ -42,21 +42,27 @@ jobs:
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
           "$HOME/solana-release/bin/solana" --version
 
-      # --- FIX: install AVM via Cargo, then Anchor 0.31.1 via AVM ---
+      # ---- Install AVM via Cargo, then Anchor 0.31.1; export ANCHOR_BIN ----
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
           set -eux
-          # Build AVM from the Anchor repo at the 0.31.1 tag
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
           avm --version
           avm install 0.31.1
           avm use 0.31.1
-          ~/.avm/bin/anchor --version
 
-      # Safety: let Anchor regenerate any lockfiles
+          # Ensure both shims and versioned bin dir are on PATH
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.avm/versions/0.31.1/bin" >> "$GITHUB_PATH"
+
+          # Resolve and persist the exact anchor binary path for later steps
+          ANCHOR_BIN="${HOME}/.avm/versions/0.31.1/bin/anchor"
+          "$ANCHOR_BIN" --version
+          echo "ANCHOR_BIN=$ANCHOR_BIN" >> "$GITHUB_ENV"
+
       - name: Remove Cargo.lock files
         shell: bash
         run: |
@@ -68,15 +74,15 @@ jobs:
         run: |
           rustc -V
           cargo -V
-          ~/.avm/bin/anchor --version
+          "$ANCHOR_BIN" --version
           solana --version
 
       - name: Build Program
         shell: bash
         run: |
           set -eux
-          ~/.avm/bin/anchor clean
-          ~/.avm/bin/anchor build
+          "$ANCHOR_BIN" clean
+          "$ANCHOR_BIN" build
 
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
