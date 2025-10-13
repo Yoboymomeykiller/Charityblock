@@ -1,5 +1,4 @@
 name: Build SBF
-
 on:
   workflow_dispatch:
 
@@ -11,25 +10,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Use a modern Rust that understands Cargo.lock v4
+      # Modern Rust that understands lockfile v4
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # Install Solana 1.18.20 with robust fallback and wire into PATH
+      # --- Solana 1.18.20 (keeps your working fallback logic) ---
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
           set -eux
           SOLANA_VER=v1.18.20
-          MIRROR1="https://release.solana.com/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
-          MIRROR2="https://github.com/solana-labs/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+
+          # Try Solana Labs first (works on Actions), fall back to GitHub mirror
+          MIRROR1="https://github.com/solana-labs/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          MIRROR2="https://release.solana.com/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
 
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
-              echo "Downloaded Solana from $URL"
+              echo "Downloaded solana from $URL"
               break
             fi
           done
@@ -37,61 +38,54 @@ jobs:
           mkdir -p /tmp/sol-release
           tar -xjf /tmp/sol.tar.bz2 -C /tmp/sol-release
 
-          # Install to a stable location under HOME (no sudo needed)
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
-          # Make available now and to later steps
-          export PATH="$HOME/solana-release/bin:$PATH"
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
+          "$HOME/solana-release/bin/solana" --version
 
-          which solana
-          solana --version
-          which cargo-build-sbf
-
-      # Install Anchor CLI 0.31.1 via AVM (using main branch, not master)
+      # --- Anchor 0.31.1 via AVM (fixed URL + fallback to the tagged file) ---
       - name: Install Anchor CLI 0.31.1
         shell: bash
         run: |
           set -eux
-          # Corrected URL (main branch)
-          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/main/avm/install.sh | bash
+          # Try 'master' (canonical), fall back to the v0.31.1 tag if master path moves
+          CURL_OK=0
+          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh -o /tmp/avm_install.sh || CURL_OK=1
+          if [ "$CURL_OK" -ne 0 ]; then
+            curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/v0.31.1/avm/install.sh -o /tmp/avm_install.sh
+          fi
+          bash /tmp/avm_install.sh
+
+          # ensure we reference the installed binaries directly
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.avm/bin:$PATH"
+          "$HOME/.avm/bin/avm" install 0.31.1
+          "$HOME/.avm/bin/avm" use 0.31.1
+          "$HOME/.avm/bin/anchor" --version
 
-          avm install 0.31.1
-          avm use 0.31.1
-
-          which anchor
-          anchor --version
-
-      # Safety: remove any preexisting lockfiles that confuse cargo/anchor on CI
+      # Safety: ensure no incompatible lockfiles remain (Anchor will regenerate)
       - name: Remove Cargo.lock files
-        shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
-      # Optional diagnostics
+      # Optional: print toolchain to logs
       - name: Show toolchain
-        shell: bash
         run: |
-          set -eux
           rustc -V
           cargo -V
-          which solana && solana --version
-          which anchor && anchor --version
-          which cargo-build-sbf
+          anchor --version || true
+          solana --version || true
 
-      # Build the Anchor program(s)
+      # Build the program
       - name: Build Program
         shell: bash
         run: |
           set -eux
-          anchor clean
-          anchor build
+          "$HOME/.avm/bin/anchor" clean
+          "$HOME/.avm/bin/anchor" build
 
-      # Upload artifacts for later consumption (IDL, keypair, types, etc.)
+      # Upload built artifacts
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
         with:
