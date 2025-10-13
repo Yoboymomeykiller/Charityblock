@@ -1,4 +1,5 @@
 name: Build SBF
+
 on:
   workflow_dispatch:
 
@@ -10,22 +11,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Use a modern Rust that understands Cargo.lock v4
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      - name: Use Rust 1.86 globally
-        shell: bash
-        run: |
-          set -eux
-          rustup default 1.86.0
-          rustup override set 1.86.0
-          rustc -V
-          cargo -V
-
-      # New: Solana install with fallback
+      # Install Solana 1.18.20 with robust fallback and wire into PATH
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -36,54 +29,65 @@ jobs:
 
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
-              echo "Downloaded solana from $URL"
+              echo "Downloaded Solana from $URL"
               break
             fi
           done
 
           mkdir -p /tmp/sol-release
           tar -xjf /tmp/sol.tar.bz2 -C /tmp/sol-release
+
+          # Install to a stable location under HOME (no sudo needed)
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
+
+          # Make available now and to later steps
+          export PATH="$HOME/solana-release/bin:$PATH"
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
 
+          which solana
           solana --version
           which cargo-build-sbf
 
+      # Install Anchor CLI 0.31.1 via AVM
       - name: Install Anchor CLI 0.31.1
         shell: bash
         run: |
           set -eux
           curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.avm/bin:$PATH"
           avm install 0.31.1
           avm use 0.31.1
           anchor --version
 
+      # Safety: remove any preexisting lockfiles that confuse cargo/anchor on CI
       - name: Remove Cargo.lock files
         shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
+      # Optional diagnostics
       - name: Show toolchain
         shell: bash
         run: |
+          set -eux
           rustc -V
           cargo -V
-          anchor --version
-          solana --version
+          which solana && solana --version
+          which anchor && anchor --version
           which cargo-build-sbf
 
+      # Build the Anchor program(s)
       - name: Build Program
-        env:
-          RUSTUP_TOOLCHAIN: 1.86.0
         shell: bash
         run: |
           set -eux
           anchor clean
           anchor build
 
+      # Upload artifacts for later consumption (IDL, keypair, types, etc.)
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
         with:
