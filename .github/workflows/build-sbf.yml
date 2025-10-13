@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Prefer a modern host toolchain for any host-side cargo work
+      # Host Rust used by any host-side cargo work (supports Cargo.lock v4)
       RUSTUP_TOOLCHAIN: "1.86.0"
       ANCHOR_RUSTC_VERSION: "1.86.0"
 
@@ -15,14 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Host Rust 1.86.0 (supports Cargo.lock v4) ---
+      # Host Rust 1.86.0 (modern cargo)
       - name: Install Rust 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # --- Solana 1.18.20 (robust mirrors) ---
+      # Solana 1.18.20 from robust mirrors (no curl TLS flake)
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -54,7 +54,7 @@ jobs:
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
           "$HOME/solana-release/bin/solana" --version
 
-      # --- AVM + Anchor 0.31.1 (compiled via cargo) ---
+      # AVM + Anchor 0.31.1 (install via cargo so the URLs never 404)
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
@@ -67,26 +67,26 @@ jobs:
           anchor --version
           echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
-      # --- Clean any stale lockfiles (v4) ---
+      # Remove any stale lockfiles (we'll generate a v3 one next)
       - name: Remove Cargo.lock files
         shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
-      # --- Seed v3 Cargo.lock with Cargo 1.75.0 (not Solana cargo) ---
+      # Generate a Cargo.lock v3 using Cargo 1.75.0 (force via rustup run)
       - name: Seed v3 Cargo.lock with Cargo 1.75.0
         shell: bash
         run: |
           set -eux
           rustup toolchain install 1.75.0 -y
           pushd programs/charityblock
-          cargo +1.75.0 generate-lockfile
+          ~/.cargo/bin/rustup run 1.75.0 cargo generate-lockfile
           popd
           echo "Lockfile header:"
           head -n 3 programs/charityblock/Cargo.lock || true
 
-      # --- Show toolchain for debugging ---
+      # Show toolchain versions (debug)
       - name: Show toolchain
         shell: bash
         run: |
@@ -96,7 +96,7 @@ jobs:
           anchor --version
           solana --version
 
-      # --- Build (Anchor -> cargo-build-sbf will now see a v3 lock) ---
+      # Build program (Anchor will call cargo-build-sbf; v3 lockfile avoids v4 error)
       - name: Build Program
         shell: bash
         env:
@@ -107,7 +107,7 @@ jobs:
           $ANCHOR_BIN clean
           $ANCHOR_BIN build
 
-      # --- Collect artifacts ---
+      # Collect artifacts
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
         with:
