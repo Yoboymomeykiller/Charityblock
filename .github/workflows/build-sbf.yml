@@ -79,9 +79,9 @@ jobs:
         shell: bash
         run: |
           set -eux
-                    rustup -y toolchain install 1.75.0
+          rustup toolchain install 1.75.0
           pushd programs/charityblock
-          ~/.cargo/bin/rustup run 1.75.0 cargo generate-lockfile
+          rustup run 1.75.0 cargo generate-lockfile
           popd
           echo "Lockfile header:"
           head -n 3 programs/charityblock/Cargo.lock || true
