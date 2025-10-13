@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Build SBF
 on:
   workflow_dispatch:
@@ -5,12 +6,17 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Force every cargo invocation (incl. ones spawned by Anchor) to use 1.86.0
+      RUSTUP_TOOLCHAIN: "1.86.0"
+      # Prepend likely install locations so tools are consistently found
+      PATH: ${{ env.HOME }}/solana-release/bin:${{ env.HOME }}/.cargo/bin:${{ env.HOME }}/.avm/bin:${{ env.PATH }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust (lockfile v4)
+      # Modern Rust (supports Cargo.lock v4)
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
@@ -26,12 +32,19 @@ jobs:
           MIRROR1="https://github.com/solana-labs/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
           MIRROR2="https://release.solana.com/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
 
+          OK=0
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
               echo "Downloaded from $URL"
+              OK=1
               break
             fi
+            sleep 2
           done
+          if [ "$OK" -ne 1 ]; then
+            echo "Failed to download Solana ${SOLANA_VER} from all mirrors" >&2
+            exit 1
+          fi
 
           mkdir -p /tmp/sol-release
           tar -xjf /tmp/sol.tar.bz2 -C /tmp/sol-release
@@ -39,11 +52,8 @@ jobs:
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
-          # Make Solana available in THIS step and future steps
-          export PATH="$HOME/solana-release/bin:$PATH"
+          # Make Solana available to this and subsequent steps
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
-
-          # Call explicitly once to verify
           "$HOME/solana-release/bin/solana" --version
 
       # ---- Install AVM via Cargo, then Anchor 0.31.1 (use shim on PATH) ----
@@ -51,6 +61,8 @@ jobs:
         shell: bash
         run: |
           set -eux
+          cargo -V
+          # Build and install AVM from the 0.31.1 tag
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
@@ -58,13 +70,14 @@ jobs:
           avm install 0.31.1
           avm use 0.31.1
 
-          # Only the shim dir is needed; it resolves the selected version.
+          # The AVM shim resolves the selected version to the real anchor binary
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
+          command -v anchor
           anchor --version
           echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
-      # Safety: ensure no stale lockfiles
+      # Safety: ensure no stale lockfiles (anchor regenerates as needed)
       - name: Remove Cargo.lock files
         shell: bash
         run: |
@@ -74,15 +87,21 @@ jobs:
       - name: Show toolchain
         shell: bash
         run: |
-          rustc -V
+          set -eux
+          which cargo
           cargo -V
+          which anchor
           anchor --version
+          which solana
           solana --version
 
-      - name: Build Program
+      - name: Build Program (force Cargo 1.86)
         shell: bash
+        env:
+          RUSTUP_TOOLCHAIN: "1.86.0"
         run: |
           set -eux
+          cargo -V
           "$ANCHOR_BIN" clean
           "$ANCHOR_BIN" build
 
