@@ -49,16 +49,20 @@ jobs:
           solana --version
           which cargo-build-sbf
 
-      # Install Anchor CLI 0.31.1 via AVM
+      # Install Anchor CLI 0.31.1 via AVM (using main branch, not master)
       - name: Install Anchor CLI 0.31.1
         shell: bash
         run: |
           set -eux
-          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh | bash
+          # Corrected URL (main branch)
+          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/main/avm/install.sh | bash
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.avm/bin:$PATH"
+
           avm install 0.31.1
           avm use 0.31.1
+
+          which anchor
           anchor --version
 
       # Safety: remove any preexisting lockfiles that confuse cargo/anchor on CI
