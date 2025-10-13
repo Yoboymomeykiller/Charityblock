@@ -10,7 +10,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust (understands lockfile v4)
+      # Modern Rust (Cargo lock v4 support)
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
@@ -40,9 +40,9 @@ jobs:
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
-          "$HOME/solana-release/bin/solana" --version
+          solana --version
 
-      # ---- Install AVM via Cargo, then Anchor 0.31.1; export ANCHOR_BIN ----
+      # ---- Install AVM via Cargo, then Anchor 0.31.1 (use shim on PATH) ----
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
@@ -54,15 +54,14 @@ jobs:
           avm install 0.31.1
           avm use 0.31.1
 
-          # Ensure both shims and versioned bin dir are on PATH
+          # Only the shim dir is needed; it resolves the selected version.
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.avm/versions/0.31.1/bin" >> "$GITHUB_PATH"
 
-          # Resolve and persist the exact anchor binary path for later steps
-          ANCHOR_BIN="${HOME}/.avm/versions/0.31.1/bin/anchor"
-          "$ANCHOR_BIN" --version
-          echo "ANCHOR_BIN=$ANCHOR_BIN" >> "$GITHUB_ENV"
+          anchor --version
+          # Use the shim for later steps
+          echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
+      # Safety: ensure no stale lockfiles
       - name: Remove Cargo.lock files
         shell: bash
         run: |
@@ -74,7 +73,7 @@ jobs:
         run: |
           rustc -V
           cargo -V
-          "$ANCHOR_BIN" --version
+          anchor --version
           solana --version
 
       - name: Build Program
