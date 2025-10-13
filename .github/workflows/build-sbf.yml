@@ -6,22 +6,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Use a container that already includes Solana CLI + cargo-build-sbf
-    container:
-      image: ghcr.io/anza-xyz/solana:v1.18.20   # if this ever 404s, try: solanalabs/solana:v1.18.20
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Install a modern Rust that supports lockfile v4
+      # Modern Rust so Cargo understands lockfile v4
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # Make 1.86 the active toolchain everywhere (cargo/anchor see it)
       - name: Use Rust 1.86 globally
         shell: bash
         run: |
@@ -30,6 +25,32 @@ jobs:
           rustup override set 1.86.0
           rustc -V
           cargo -V
+
+      # Install Solana CLI 1.18.20 from GitHub releases (no release.solana.com, no container)
+      - name: Install Solana 1.18.20 (GitHub release)
+        shell: bash
+        run: |
+          set -eux
+          SOLANA_VER=v1.18.20
+          ASSET_URL="https://github.com/anza-xyz/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+
+          # Retry download a few times to be robust
+          for i in 1 2 3 4 5; do
+            curl -fL --retry 3 --retry-delay 2 -o /tmp/solana.tar.bz2 "$ASSET_URL" && break || sleep 3
+          done
+
+          mkdir -p /tmp/solana-release
+          tar -xjf /tmp/solana.tar.bz2 -C /tmp/solana-release
+
+          # The release layout has a bin/ dir with solana + cargo-build-sbf
+          mkdir -p "$HOME/solana-1.18.20"
+          cp -a /tmp/solana-release/solana-release/bin/* "$HOME/solana-1.18.20/"
+
+          chmod +x "$HOME/solana-1.18.20/"*
+          echo "$HOME/solana-1.18.20" >> "$GITHUB_PATH"
+
+          solana --version
+          which cargo-build-sbf
 
       # Install Anchor CLI 0.31.1 via AVM
       - name: Install Anchor CLI 0.31.1
@@ -42,24 +63,22 @@ jobs:
           avm use 0.31.1
           anchor --version
 
-      # Safety: nuke any incompatible lockfiles
+      # Safety: remove incompatible lockfiles
       - name: Remove Cargo.lock files
         shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
-      # Show toolchain (and that solana CLI is present in the container)
       - name: Show toolchain
         shell: bash
         run: |
           rustc -V
           cargo -V
-          solana --version
-          which cargo-build-sbf || true
           anchor --version
+          solana --version
+          which cargo-build-sbf
 
-      # Build the program (uses cargo-build-sbf provided by the container)
       - name: Build Program
         env:
           RUSTUP_TOOLCHAIN: 1.86.0
@@ -69,7 +88,6 @@ jobs:
           anchor clean
           anchor build
 
-      # Upload built artifacts
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
         with:
