@@ -74,16 +74,17 @@ jobs:
           set -eux
           find . -name Cargo.lock -delete
 
-      # --- IMPORTANT: create a v3 lockfile using Solana's (older) Cargo ---
-      - name: Seed v3 Cargo.lock with Solana cargo
+      # --- Seed v3 Cargo.lock with Cargo 1.75.0 (not Solana cargo) ---
+      - name: Seed v3 Cargo.lock with Cargo 1.75.0
         shell: bash
         run: |
           set -eux
-          # Generate lockfile(s) with Solana's cargo so they are v3-compatible.
-          # Do this for each on-chain program crate.
+          rustup toolchain install 1.75.0 -y
           pushd programs/charityblock
-          "$HOME/solana-release/bin/cargo" generate-lockfile
+          cargo +1.75.0 generate-lockfile
           popd
+          echo "Lockfile header:"
+          head -n 3 programs/charityblock/Cargo.lock || true
 
       # --- Show toolchain for debugging ---
       - name: Show toolchain
@@ -94,9 +95,6 @@ jobs:
           cargo -V
           anchor --version
           solana --version
-          echo "Solana cargo path: $(dirname "$(command -v "$HOME/solana-release/bin/cargo")")"
-          echo "Lockfile header:"
-          head -n 3 programs/charityblock/Cargo.lock || true
 
       # --- Build (Anchor -> cargo-build-sbf will now see a v3 lock) ---
       - name: Build Program
