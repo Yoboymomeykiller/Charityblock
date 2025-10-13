@@ -6,6 +6,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Use a container that already includes Solana CLI + cargo-build-sbf
+    container:
+      image: ghcr.io/anza-xyz/solana:v1.18.20   # if this ever 404s, try: solanalabs/solana:v1.18.20
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,7 +21,7 @@ jobs:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # Make 1.86 the active toolchain everywhere (anchor/cargo use it too)
+      # Make 1.86 the active toolchain everywhere (cargo/anchor see it)
       - name: Use Rust 1.86 globally
         shell: bash
         run: |
@@ -26,14 +30,6 @@ jobs:
           rustup override set 1.86.0
           rustc -V
           cargo -V
-
-      # Install Solana CLI 1.18.20 via official action
-      - name: Install Solana 1.18.20
-        uses: metaplex-foundation/actions/install-solana@v1
-        with:
-          version: v1.18.20
-          cache: true
-          base_url: https://release.solana.com
 
       # Install Anchor CLI 0.31.1 via AVM
       - name: Install Anchor CLI 0.31.1
@@ -53,16 +49,17 @@ jobs:
           set -eux
           find . -name Cargo.lock -delete
 
-      # Optional: print toolchain summary
+      # Show toolchain (and that solana CLI is present in the container)
       - name: Show toolchain
         shell: bash
         run: |
           rustc -V
           cargo -V
-          anchor --version
           solana --version
+          which cargo-build-sbf || true
+          anchor --version
 
-      # Build the program using the pinned toolchain
+      # Build the program (uses cargo-build-sbf provided by the container)
       - name: Build Program
         env:
           RUSTUP_TOOLCHAIN: 1.86.0
