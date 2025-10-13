@@ -85,7 +85,18 @@ jobs:
             "$HOME/.cargo/bin/anchor" --version
           fi
 
-      # --- Safety: remove any stale lockfiles (Anchor regenerates them) ---
+      # --- Pin Rust 1.86 in this workspace (so 'cargo +stable' uses 1.86) ---
+      - name: Pin Rust 1.86 in workspace
+        shell: bash
+        run: |
+          set -eux
+          rustup toolchain install 1.86.0
+          rustup override set 1.86.0
+          rustup default 1.86.0
+          rustc -V
+          cargo -V
+
+      # --- Remove any stale lockfiles (regenerate under 1.86) ---
       - name: Remove Cargo.lock files
         shell: bash
         run: |
