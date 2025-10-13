@@ -10,21 +10,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust that understands lockfile v4
+      # Modern Rust (Cargo understands lockfile v4)
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # --- Solana 1.18.20 (keeps your working fallback logic) ---
+      # --- Solana 1.18.20 (working mirror logic) ---
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
           set -eux
           SOLANA_VER=v1.18.20
-
-          # Try Solana Labs first (works on Actions), fall back to GitHub mirror
           MIRROR1="https://github.com/solana-labs/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
           MIRROR2="https://release.solana.com/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
 
@@ -44,48 +42,42 @@ jobs:
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
           "$HOME/solana-release/bin/solana" --version
 
-      # --- Anchor 0.31.1 via AVM (fixed URL + fallback to the tagged file) ---
-      - name: Install Anchor CLI 0.31.1
+      # --- FIX: install AVM via Cargo, then Anchor 0.31.1 via AVM ---
+      - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
           set -eux
-          # Try 'master' (canonical), fall back to the v0.31.1 tag if master path moves
-          CURL_OK=0
-          curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/master/avm/install.sh -o /tmp/avm_install.sh || CURL_OK=1
-          if [ "$CURL_OK" -ne 0 ]; then
-            curl -fsSL https://raw.githubusercontent.com/coral-xyz/anchor/v0.31.1/avm/install.sh -o /tmp/avm_install.sh
-          fi
-          bash /tmp/avm_install.sh
+          # Build AVM from the Anchor repo at the 0.31.1 tag
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-          # ensure we reference the installed binaries directly
-          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
-          "$HOME/.avm/bin/avm" install 0.31.1
-          "$HOME/.avm/bin/avm" use 0.31.1
-          "$HOME/.avm/bin/anchor" --version
+          avm --version
+          avm install 0.31.1
+          avm use 0.31.1
+          ~/.avm/bin/anchor --version
 
-      # Safety: ensure no incompatible lockfiles remain (Anchor will regenerate)
+      # Safety: let Anchor regenerate any lockfiles
       - name: Remove Cargo.lock files
+        shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
-      # Optional: print toolchain to logs
       - name: Show toolchain
+        shell: bash
         run: |
           rustc -V
           cargo -V
-          anchor --version || true
-          solana --version || true
+          ~/.avm/bin/anchor --version
+          solana --version
 
-      # Build the program
       - name: Build Program
         shell: bash
         run: |
           set -eux
-          "$HOME/.avm/bin/anchor" clean
-          "$HOME/.avm/bin/anchor" build
+          ~/.avm/bin/anchor clean
+          ~/.avm/bin/anchor build
 
-      # Upload built artifacts
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
         with:
