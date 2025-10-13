@@ -10,7 +10,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust (Cargo lock v4 support)
+      # Modern Rust (lockfile v4)
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
@@ -39,8 +39,12 @@ jobs:
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
+          # Make Solana available in THIS step and future steps
+          export PATH="$HOME/solana-release/bin:$PATH"
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
-          solana --version
+
+          # Call explicitly once to verify
+          "$HOME/solana-release/bin/solana" --version
 
       # ---- Install AVM via Cargo, then Anchor 0.31.1 (use shim on PATH) ----
       - name: Install AVM and Anchor 0.31.1
@@ -58,7 +62,6 @@ jobs:
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
           anchor --version
-          # Use the shim for later steps
           echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
       # Safety: ensure no stale lockfiles
