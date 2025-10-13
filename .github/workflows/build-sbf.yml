@@ -6,22 +6,22 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Ensure every cargo invocation (even ones spawned by Anchor) uses 1.86.0
     env:
       RUSTUP_TOOLCHAIN: "1.86.0"
+      ANCHOR_RUSTC_VERSION: "1.86.0"  # <-- Forces Anchor to use this Rust toolchain internally
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- Rust 1.86.0 (supports lockfile v4) ---
-      - name: Rust toolchain 1.86.0
+      # --- Rust 1.86.0 ---
+      - name: Install Rust 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # --- Solana 1.18.20 (with mirror fallback) ---
+      # --- Solana 1.18.20 ---
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -50,70 +50,38 @@ jobs:
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
-          # Expose Solana to subsequent steps
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
           "$HOME/solana-release/bin/solana" --version
 
-      # --- Create a rustup alias so 'cargo +solana' works ---
-      - name: Create 'solana' rustup alias -> 1.86.0
-        shell: bash
-        run: |
-          set -eux
-          host="$(rustc -Vv | awk -F': ' '/host/ {print $2}')"
-          tooldir="$HOME/.rustup/toolchains/1.86.0-$host"
-          rustup toolchain link solana "$tooldir"
-          rustup toolchain list
-
-      # --- Install Anchor 0.31.1 (AVM first, cargo fallback) ---
+      # --- Anchor 0.31.1 ---
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
           set -eux
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
-          avm --version
-
-          if ! avm install 0.31.1; then
-            echo "AVM fetch failed; will fall back to cargo anchor-cli after this." >&2
-          fi
-          avm use 0.31.1 || true
-
+          avm install 0.31.1
+          avm use 0.31.1
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+          anchor --version
+          echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
-          if command -v anchor >/dev/null 2>&1; then
-            anchor --version
-            echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
-          else
-            cargo install anchor-cli --version 0.31.1 --locked
-            echo "ANCHOR_BIN=$HOME/.cargo/bin/anchor" >> "$GITHUB_ENV"
-            "$HOME/.cargo/bin/anchor" --version
-          fi
-
-      # --- Safety: remove any stale lockfiles (Anchor regenerates them) ---
-      - name: Remove Cargo.lock files
+      # --- Ensure correct cargo path + remove stale locks ---
+      - name: Prepare environment
         shell: bash
         run: |
           set -eux
-          find . -name Cargo.lock -delete
-
-      - name: Show toolchain
-        shell: bash
-        run: |
-          set -eux
+          rustup default 1.86.0
           which cargo
           cargo -V
-          which anchor
-          $ANCHOR_BIN --version
-          which solana
-          solana --version
-          rustup toolchain list
+          find . -name Cargo.lock -delete
 
       - name: Build Program
         shell: bash
-        env:
-          RUSTUP_TOOLCHAIN: "1.86.0"
         run: |
           set -eux
+          echo "Using toolchain:"
+          rustup show
           cargo -V
           $ANCHOR_BIN clean
           $ANCHOR_BIN build
