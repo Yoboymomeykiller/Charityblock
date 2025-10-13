@@ -25,19 +25,28 @@ jobs:
           rustc -V
           cargo -V
 
-      # ✅ New: install-init path (no release.solana.com, no Docker)
-      - name: Install Solana 1.18.20 (install-init)
+      # New: Solana install with fallback
+      - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
           set -eux
           SOLANA_VER=v1.18.20
-          INIT_URL="https://github.com/anza-xyz/solana/releases/download/${SOLANA_VER}/solana-install-init-x86_64-unknown-linux-gnu"
-          for i in 1 2 3 4 5; do
-            curl -fL --retry 3 --retry-delay 2 -o /tmp/solana-install-init "$INIT_URL" && break || sleep 3
+          MIRROR1="https://release.solana.com/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          MIRROR2="https://github.com/solana-labs/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+
+          for URL in "$MIRROR1" "$MIRROR2"; do
+            if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
+              echo "Downloaded solana from $URL"
+              break
+            fi
           done
-          chmod +x /tmp/solana-install-init
-          /tmp/solana-install-init -v "$SOLANA_VER" -y
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+          mkdir -p /tmp/sol-release
+          tar -xjf /tmp/sol.tar.bz2 -C /tmp/sol-release
+          mkdir -p "$HOME/solana-release/bin"
+          cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
+          echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
+
           solana --version
           which cargo-build-sbf
 
