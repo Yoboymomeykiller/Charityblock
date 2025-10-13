@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -eux
-          rustup toolchain install 1.75.0 -y
+                    rustup -y toolchain install 1.75.0
           pushd programs/charityblock
           ~/.cargo/bin/rustup run 1.75.0 cargo generate-lockfile
           popd
