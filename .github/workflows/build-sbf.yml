@@ -10,7 +10,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust so Cargo understands lockfile v4
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
@@ -25,29 +24,23 @@ jobs:
           rustup override set 1.86.0
           rustc -V
           cargo -V
-      # Install Solana CLI 1.18.20 using the install-init binary from the release
+
+      # ✅ New: install-init path (no release.solana.com, no Docker)
       - name: Install Solana 1.18.20 (install-init)
         shell: bash
         run: |
           set -eux
           SOLANA_VER=v1.18.20
           INIT_URL="https://github.com/anza-xyz/solana/releases/download/${SOLANA_VER}/solana-install-init-x86_64-unknown-linux-gnu"
-
-          # Download the init binary with retries
           for i in 1 2 3 4 5; do
             curl -fL --retry 3 --retry-delay 2 -o /tmp/solana-install-init "$INIT_URL" && break || sleep 3
           done
-
           chmod +x /tmp/solana-install-init
           /tmp/solana-install-init -v "$SOLANA_VER" -y
-
-          # Add Solana to PATH
           echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
-
           solana --version
           which cargo-build-sbf
-      
-      # Install Anchor CLI 0.31.1 via AVM
+
       - name: Install Anchor CLI 0.31.1
         shell: bash
         run: |
@@ -58,7 +51,6 @@ jobs:
           avm use 0.31.1
           anchor --version
 
-      # Safety: remove incompatible lockfiles
       - name: Remove Cargo.lock files
         shell: bash
         run: |
