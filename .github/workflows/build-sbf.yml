@@ -25,33 +25,28 @@ jobs:
           rustup override set 1.86.0
           rustc -V
           cargo -V
-
-      # Install Solana CLI 1.18.20 from GitHub releases (no release.solana.com, no container)
-      - name: Install Solana 1.18.20 (GitHub release)
+      # Install Solana CLI 1.18.20 using the install-init binary from the release
+      - name: Install Solana 1.18.20 (install-init)
         shell: bash
         run: |
           set -eux
           SOLANA_VER=v1.18.20
-          ASSET_URL="https://github.com/anza-xyz/solana/releases/download/${SOLANA_VER}/solana-release-x86_64-unknown-linux-gnu.tar.bz2"
+          INIT_URL="https://github.com/anza-xyz/solana/releases/download/${SOLANA_VER}/solana-install-init-x86_64-unknown-linux-gnu"
 
-          # Retry download a few times to be robust
+          # Download the init binary with retries
           for i in 1 2 3 4 5; do
-            curl -fL --retry 3 --retry-delay 2 -o /tmp/solana.tar.bz2 "$ASSET_URL" && break || sleep 3
+            curl -fL --retry 3 --retry-delay 2 -o /tmp/solana-install-init "$INIT_URL" && break || sleep 3
           done
 
-          mkdir -p /tmp/solana-release
-          tar -xjf /tmp/solana.tar.bz2 -C /tmp/solana-release
+          chmod +x /tmp/solana-install-init
+          /tmp/solana-install-init -v "$SOLANA_VER" -y
 
-          # The release layout has a bin/ dir with solana + cargo-build-sbf
-          mkdir -p "$HOME/solana-1.18.20"
-          cp -a /tmp/solana-release/solana-release/bin/* "$HOME/solana-1.18.20/"
-
-          chmod +x "$HOME/solana-1.18.20/"*
-          echo "$HOME/solana-1.18.20" >> "$GITHUB_PATH"
+          # Add Solana to PATH
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
 
           solana --version
           which cargo-build-sbf
-
+      
       # Install Anchor CLI 0.31.1 via AVM
       - name: Install Anchor CLI 0.31.1
         shell: bash
