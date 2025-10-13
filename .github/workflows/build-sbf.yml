@@ -1,4 +1,3 @@
-# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Build SBF
 on:
   workflow_dispatch:
@@ -6,24 +5,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # Force every cargo invocation (even ones spawned by Anchor) to use 1.86.0
     env:
-      # Force every cargo invocation (incl. ones spawned by Anchor) to use 1.86.0
       RUSTUP_TOOLCHAIN: "1.86.0"
-      # Prepend likely install locations so tools are consistently found
-      PATH: ${{ env.HOME }}/solana-release/bin:${{ env.HOME }}/.cargo/bin:${{ env.HOME }}/.avm/bin:${{ env.PATH }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Modern Rust (supports Cargo.lock v4)
+      # --- Rust 1.86.0 (supports lockfile v4) ---
       - name: Rust toolchain 1.86.0
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # ---- Solana 1.18.20 with mirror fallback ----
+      # --- Solana 1.18.20 (with mirror fallback) ---
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -52,32 +50,42 @@ jobs:
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
-          # Make Solana available to this and subsequent steps
+          # Expose Solana to subsequent steps
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
           "$HOME/solana-release/bin/solana" --version
 
-      # ---- Install AVM via Cargo, then Anchor 0.31.1 (use shim on PATH) ----
+      # --- Install Anchor 0.31.1 (AVM first, cargo fallback) ---
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
           set -eux
-          cargo -V
-          # Build and install AVM from the 0.31.1 tag
-          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
+          # Ensure cargo bin on PATH for this job
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+          # 1) Install AVM from Anchor repo tag
+          cargo install --git https://github.com/coral-xyz/anchor --tag v0.31.1 avm --locked
           avm --version
-          avm install 0.31.1
-          avm use 0.31.1
 
-          # The AVM shim resolves the selected version to the real anchor binary
+          # 2) Use AVM to install & select Anchor 0.31.1
+          if ! avm install 0.31.1; then
+            echo "AVM fetch failed; will fall back to cargo anchor-cli after this." >&2
+          fi
+          avm use 0.31.1 || true
+
+          # AVM shim directory
           echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
 
-          command -v anchor
-          anchor --version
-          echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
+          # Prefer AVM's shim if it resolves; otherwise install anchor-cli via cargo
+          if command -v anchor >/dev/null 2>&1; then
+            anchor --version
+            echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
+          else
+            cargo install anchor-cli --version 0.31.1 --locked
+            echo "ANCHOR_BIN=$HOME/.cargo/bin/anchor" >> "$GITHUB_ENV"
+            "$HOME/.cargo/bin/anchor" --version
+          fi
 
-      # Safety: ensure no stale lockfiles (anchor regenerates as needed)
+      # --- Safety: remove any stale lockfiles (Anchor regenerates them) ---
       - name: Remove Cargo.lock files
         shell: bash
         run: |
@@ -91,19 +99,19 @@ jobs:
           which cargo
           cargo -V
           which anchor
-          anchor --version
+          $ANCHOR_BIN --version
           which solana
           solana --version
 
-      - name: Build Program (force Cargo 1.86)
+      - name: Build Program
         shell: bash
         env:
           RUSTUP_TOOLCHAIN: "1.86.0"
         run: |
           set -eux
           cargo -V
-          "$ANCHOR_BIN" clean
-          "$ANCHOR_BIN" build
+          $ANCHOR_BIN clean
+          $ANCHOR_BIN build
 
       - name: Upload IDL and artifacts
         uses: actions/upload-artifact@v4
