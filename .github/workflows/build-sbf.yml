@@ -9,7 +9,6 @@ jobs:
       # Keep host cargo/rust modern (v4 lockfile capable)
       RUSTUP_TOOLCHAIN: "1.86.0"
       ANCHOR_RUSTC_VERSION: "1.86.0"
-      # Make rustup/cargo non-interactive in CI
       RUSTUP_NONINTERACTIVE: "1"
       CI: "1"
 
@@ -35,8 +34,7 @@ jobs:
           OK=0
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
-              echo "Downloaded from $URL"
-              OK=1; break
+              echo "Downloaded from $URL"; OK=1; break
             fi
             sleep 2
           done
@@ -50,7 +48,9 @@ jobs:
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
 
+          # Make Solana tools available (after host cargo in PATH we set later)
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
+
           "$HOME/solana-release/bin/solana" --version
 
       # ---- AVM + Anchor 0.31.1 (via cargo) ----
@@ -78,7 +78,6 @@ jobs:
         shell: bash
         run: |
           set -eux
-          # Correct syntax (no invalid -y placement)
           rustup toolchain install 1.75.0 --profile minimal
           pushd programs/charityblock
           rustup run 1.75.0 cargo generate-lockfile
@@ -86,22 +85,26 @@ jobs:
           echo "Lockfile header:"
           head -n 3 programs/charityblock/Cargo.lock || true
 
-      - name: Show toolchain
-        shell: bash
-        run: |
-          set -eux
-          rustup show
-          cargo -V
-          anchor --version
-          solana --version
-
-      - name: Build Program
+      - name: Build Program (force host rustc = 1.86)
         shell: bash
         env:
           RUSTUP_TOOLCHAIN: "1.86.0"
           ANCHOR_RUSTC_VERSION: "1.86.0"
         run: |
           set -eux
+          # Ensure rustup's cargo/rustc are FIRST in PATH (before Solana's cargo)
+          HOST_BIN="$(dirname "$(rustup which cargo)")"
+          export PATH="$HOST_BIN:$PATH"
+          hash -r
+
+          echo "Using cargo: $(command -v cargo)"
+          cargo -V
+          echo "Using rustc:  $(command -v rustc)"
+          rustc -V
+          echo "Solana bin dir (still available later on PATH): $HOME/solana-release/bin"
+          ls -1 "$HOME/solana-release/bin" | sed 's/^/  - /' | head -n 10 || true
+
+          # Now build with Anchor (will call host cargo 1.86)
           $ANCHOR_BIN clean
           $ANCHOR_BIN build
 
