@@ -6,7 +6,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Keep host cargo/rust modern (v4 lockfile capable)
       RUSTUP_TOOLCHAIN: "1.86.0"
       ANCHOR_RUSTC_VERSION: "1.86.0"
       RUSTUP_NONINTERACTIVE: "1"
@@ -22,7 +21,6 @@ jobs:
           toolchain: "1.86.0"
           components: rustfmt, clippy
 
-      # ---- Solana 1.18.20 with mirror fallback ----
       - name: Install Solana 1.18.20 (with fallback)
         shell: bash
         run: |
@@ -34,12 +32,13 @@ jobs:
           OK=0
           for URL in "$MIRROR1" "$MIRROR2"; do
             if curl -fL --retry 3 --retry-delay 2 -o /tmp/sol.tar.bz2 "$URL"; then
-              echo "Downloaded from $URL"; OK=1; break
+              echo "Downloaded from $URL"
+              OK=1; break
             fi
             sleep 2
           done
           if [ "$OK" -ne 1 ]; then
-            echo "Failed to download Solana ${SOLANA_VER} from all mirrors" >&2
+            echo "Failed to download Solana ${SOLANA_VER}" >&2
             exit 1
           fi
 
@@ -47,13 +46,9 @@ jobs:
           tar -xjf /tmp/sol.tar.bz2 -C /tmp/sol-release
           mkdir -p "$HOME/solana-release/bin"
           cp -a /tmp/sol-release/solana-release/bin/* "$HOME/solana-release/bin"
-
-          # Make Solana tools available (after host cargo in PATH we set later)
           echo "$HOME/solana-release/bin" >> "$GITHUB_PATH"
-
           "$HOME/solana-release/bin/solana" --version
 
-      # ---- AVM + Anchor 0.31.1 (via cargo) ----
       - name: Install AVM and Anchor 0.31.1
         shell: bash
         run: |
@@ -66,14 +61,12 @@ jobs:
           anchor --version
           echo "ANCHOR_BIN=anchor" >> "$GITHUB_ENV"
 
-      # ---- Clean stale lockfiles ----
       - name: Remove Cargo.lock files
         shell: bash
         run: |
           set -eux
           find . -name Cargo.lock -delete
 
-      # ---- Generate v3 Cargo.lock using cargo 1.75.0 ----
       - name: Seed v3 Cargo.lock with Cargo 1.75.0
         shell: bash
         run: |
@@ -82,8 +75,25 @@ jobs:
           pushd programs/charityblock
           rustup run 1.75.0 cargo generate-lockfile
           popd
-          echo "Lockfile header:"
           head -n 3 programs/charityblock/Cargo.lock || true
+
+      # NEW: make `cargo +solana` resolve to our 1.86 toolchain
+      - name: Create rustup alias +solana -> 1.86.0
+        shell: bash
+        run: |
+          set -eux
+          rustup toolchain install 1.86.0 --profile minimal
+          rustup toolchain link solana "$(rustc --print sysroot)"
+          rustup toolchain list
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          set -eux
+          rustup show
+          cargo -V
+          anchor --version
+          solana --version
 
       - name: Build Program (force host rustc = 1.86)
         shell: bash
@@ -92,19 +102,6 @@ jobs:
           ANCHOR_RUSTC_VERSION: "1.86.0"
         run: |
           set -eux
-          # Ensure rustup's cargo/rustc are FIRST in PATH (before Solana's cargo)
-          HOST_BIN="$(dirname "$(rustup which cargo)")"
-          export PATH="$HOST_BIN:$PATH"
-          hash -r
-
-          echo "Using cargo: $(command -v cargo)"
-          cargo -V
-          echo "Using rustc:  $(command -v rustc)"
-          rustc -V
-          echo "Solana bin dir (still available later on PATH): $HOME/solana-release/bin"
-          ls -1 "$HOME/solana-release/bin" | sed 's/^/  - /' | head -n 10 || true
-
-          # Now build with Anchor (will call host cargo 1.86)
           $ANCHOR_BIN clean
           $ANCHOR_BIN build
 
